@@ -1,4 +1,4 @@
-# Windows x64 Call Stack Spoofing (Unwind-Aware)
+# Windows x64 Call Stack Spoofing
 
 ### Overview
 
@@ -151,16 +151,48 @@ This avoids call instructions and preserves full control over stack layout.
 
 ### Example Usage
 
-At the moment a simple PoC of allocating memory and executing a simple shellcode is included, which uses the standard APIs: `NtAllocateVirtualMemory` for allocation, `WriteProcessMemory` to write the shellcode and `CreateThread` to create an execution thread. The two spoofed frames are choosen to be from `RtlUserThreadStart` and `BaseThreadInitThunk` APIs (but more can be included).
+A simple proof-of-concept is included to demonstrate how the call stack spoofing mechanism can be used in practice.
 
-For every spoof target a dedicated struct is to be first prepared and populated. The struct holds the address of the spoof target, handle to the module in which it can be found and an optional offset from the function start.
+The PoC performs a standard sequence of actions:
+
+1. Allocate executable memory using `NtAllocateVirtualMemory`
+
+2. Write a payload using `WriteProcessMemory`
+
+3. Execute the payload using `CreateThread`
+
+All API calls are executed through the spoofing mechanism, such that the observed call stack appears to originate from legitimate Windows thread initialization routines.
+
+For this example, two spoofed frames are used:
+
+- `RtlUserThreadStart`
+
+- `BaseThreadInitThunk`
+
+Additional frames can be added if desired.
+
+---
+
+#### Preparing Spoof Targets
+
+Each spoofed frame is described using a `SPOOF_TARGET` structure.
+This structure defines:
+
+- The address of the function to spoof
+
+- The module in which the function resides
+
+An optional offset from the function start (used to land after the prolog)
 
 ```C++
     LPCSTR SpoofName1 = "RtlUserThreadStart";
     LPCSTR SpoofName2 = "BaseThreadInitThunk";
+
     SPOOF_TARGET SpoofApi1 = { 0 };
     SPOOF_TARGET SpoofApi2 = { 0 };
 ```
+
+First, obtain handles to the required modules and resolve the function addresses:
 
 ```C++
     // Handles to the modules that are required
@@ -176,8 +208,14 @@ For every spoof target a dedicated struct is to be first prepared and populated.
     SpoofApi2.hModule = hMod2;
     SpoofApi2.offsetFromStart = 0x14;
 ```
+The offsets are chosen to ensure that execution resumes after the function prolog, matching realistic return addresses observed in legitimate call stacks.
 
-After this is done pointers to all spoof targets are stored in an array which is then added to the `API_CALL_INFO` structure along with information about the API to be called, like its address and argument count.
+---
+
+#### Configuring the Spoofed Call Chain
+
+Once the spoof targets are prepared, pointers to them are stored in an array.
+This array defines the synthetic call stack that will be constructed at runtime.
 
 ```C++
     // Store them in an array for syntetic frame preparations
@@ -188,37 +226,67 @@ After this is done pointers to all spoof targets are stored in an array which is
     apiCallInfo.spoofFramesTargetsArray = spoofArray;
 ```
 
-Before actually calling the API its information needs to be populated in the struct. For any additional APIs that are to be called the two members are updated accordingly.
+The order of the array corresponds to the order of frames as they will appear on the stack.
+
+---
+
+#### Specifying the Target API
+
+Before invoking the spoofed call, the target API information must be populated in the `API_CALL_INFO` structure.
+
+This includes:
+
+- The address of the function to be executed
+
+- The number of arguments it expects
+
 
 ```C++
     apiCallInfo.pFuncAddr = pNtAllocateVirtualMemory;
     apiCallInfo.apiFuncArgsCount = 6;
 ```
 
-The last member of the structure `retVal` is left unitialized, as its used to store the return value from the call. Invoking the API after everything is prepared can be done as follows.
+The `retVal` member of the structure is intentionally left uninitialized, as it is populated internally with the return value of the spoofed call.
+
+---
+
+#### Executing the Spoofed Call
+
+With all required information prepared, the spoofed API call can be executed using `CallStackSpoof`.
+
+Arguments are passed as variadic parameters and are automatically placed into the correct registers and stack locations.
 
 ```C++
     PVOID addr = NULL;
     SIZE_T size = sizeof(shellcode);
 
     CallStackSpoof(
-        &apiCallInfo, 
-        (uint64_t)(HANDLE)-1,
-        (uint64_t)&addr,
-        (uint64_t)0,
-        (uint64_t)&size,
-        (uint64_t)(MEM_COMMIT | MEM_RESERVE),
-        (uint64_t)PAGE_EXECUTE_READWRITE
+        &apiCallInfo,                           // NtAllocateVirtualMemory
+        (uint64_t)(HANDLE)-1,                   // ProcessHandle
+        (uint64_t)&addr,                        // *BaseAddress
+        (uint64_t)0,                            // ZeroBits
+        (uint64_t)&size,                        // RegionSize
+        (uint64_t)(MEM_COMMIT | MEM_RESERVE),   // AllocationType
+        (uint64_t)PAGE_EXECUTE_READWRITE        // Protect
     );
+```
 
-    // Accessing the return value after a cast
+After the call completes, the return value can be accessed via the `retVal` field:
+
+```C++
     status = (NTSTATUS)(ULONG_PTR)apiCallInfo.retVal;
     printf("[+] Allocation: %p, status: 0x%08X\n", addr, status);
 ```
 
-Observed call stack (simplified):
+Subsequent API calls (such as `WriteProcessMemory` and `CreateThread`) reuse the same spoofed call chain by updating only the target function address and argument count.
 
-```
+---
+
+#### Resulting Call Stack (Simplified)
+
+When observed under a debugger or stack-walking tool, the resulting call stack resembles the following:
+
+```bash
 0:000> ~0 k
 Call Site
 ntdll!NtAllocateVirtualMemory+0x3
@@ -227,20 +295,23 @@ KERNEL32!BaseThreadInitThunk+0x14
 ntdll!RtlUserThreadStart+0x21
 ```
 
-Call stacks from full execution.
+This demonstrates how the project constructs a plausible and unwind-consistent call stack while executing arbitrary APIs.
 
+Allocating memory
 ![Allocating memory](./ntallocatevirtualmemory_spoof.png)
 
+Writing the shellcode
 ![Writing shellcode](./writeprocessmemory_spoof.png)
 
-![Creating thread](./writeprocessmemory_spoof.png)
+Creating an execution thread
+![Creating thread](./createthread_spoof.png)
 
 
 ---
 
 ### Limitations & Known Constraints
 
-This project was mainly done for learning, so i guess that most likely things can be done better :)
+This project was mainly done for learning, so i guess that most likely some things can be done better :)
 
 - No support for UWOP_SET_FPREG frames
 
@@ -283,10 +354,10 @@ Do not use this code in unauthorized environments.
 
 ### Credits & References
 
-- As always [MalDev Academy](https://maldevacademy.com/) for their incredible content
+- As always [MalDev Academy](https://maldevacademy.com/) for their incredible content that served as general inspiration for the project
 
-- The excellent blog (and repository) from [susMdT](https://github.com/susMdT), which can be found [here](https://dtsec.us/2023-09-15-StackSpoofin/)
+- The excellent [blog post](https://dtsec.us/2023-09-15-StackSpoofin/) (and repository) from [susMdT](https://github.com/susMdT) exploring x64 call stack spoofing concepts and implementation details.
 
-- Another excellent [blog](https://hulkops.gitbook.io/blog/red-team/x64-call-stack-spoofing) from HulkOps that helped me to initially understand the technique
+- [HulkOps — x64 Call Stack Spoofing](https://hulkops.gitbook.io/blog/red-team/x64-call-stack-spoofing) A clear and well-structured explanation of the core ideas behind call stack spoofing on Windows x64, which helped establish an initial conceptual understanding of the technique.
 
-- The original [SilentMoonwalk](https://github.com/klezVirus/SilentMoonwalk) project
+- The original [klezVirus — SilentMoonwalk](https://github.com/klezVirus/SilentMoonwalk) project referenced for comparative study and broader context.
