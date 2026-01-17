@@ -2,7 +2,7 @@
 
 ### Overview
 
-This project is a Windows x64 call stack spoofing implementation built from first principles using C++ and x64 assembly, with full awareness of PE exception metadata and unwind information.
+This project is a Windows x64 call stack spoofing implementation built using C++ and x64 assembly, with full awareness of PE exception metadata and unwind information.
 
 The goal of the project is educational: to deeply understand how Windows constructs, unwinds, and validates call stacks at runtime, and to prepare for advanced Windows internals and exploit development topics.
 

